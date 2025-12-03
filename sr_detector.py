@@ -76,13 +76,17 @@ class SRDetector:
             future_highs = highs[i+self.window : i+self.window+10]
             future_lows = lows[i+self.window : i+self.window+10]
 
+            # Safety check: ensure future data exists
+            if not future_highs or not future_lows:
+                continue
+
             # Calculate breakout moves from the zone
             up_move = max(future_highs) - zone_high
             down_move = zone_low - min(future_lows)
 
             # CLASSIFY SUPPORT OR RESISTANCE
-            # Choose the dominant breakout direction
-            if up_move > self.breakout_threshold and up_move > down_move:
+            # Choose the dominant breakout direction (>= for up to handle equal case)
+            if up_move > self.breakout_threshold and up_move >= down_move:
                 # Price broke UP from zone → zone acts as SUPPORT
                 zones.append(Zone(price=zone_low, ztype="support"))
             elif down_move > self.breakout_threshold and down_move > up_move:
