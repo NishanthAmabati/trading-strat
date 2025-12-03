@@ -52,28 +52,42 @@ class SRDetector:
     def detect_compression_zones(self, candles: List[Candle]) -> List[Zone]:
         zones = []
         closes = [c.close for c in candles]
+        highs = [c.high for c in candles]
+        lows = [c.low for c in candles]
 
         # prevent index overflow (window + future candles)
         limit = len(candles) - self.window - 10
 
         for i in range(limit):
-            win = closes[i:i+self.window]
+            win_closes = closes[i:i+self.window]
+            win_highs = highs[i:i+self.window]
+            win_lows = lows[i:i+self.window]
 
-            # CONDITION 1 → close range ≤ 50 points
-            if max(win) - min(win) > self.compression_threshold:
+            # CONDITION 1 → close range ≤ compression_threshold points
+            if max(win_closes) - min(win_closes) > self.compression_threshold:
                 continue
 
-            zone_price = sum(win) / self.window  # average close
-            future = closes[i+self.window : i+self.window+10]
+            # Zone price calculation:
+            # - For support: use the lowest low of the compression zone
+            # - For resistance: use the highest high of the compression zone
+            zone_low = min(win_lows)
+            zone_high = max(win_highs)
 
-            up_move = max(future) - zone_price
-            down_move = zone_price - min(future)
+            future_highs = highs[i+self.window : i+self.window+10]
+            future_lows = lows[i+self.window : i+self.window+10]
+
+            # Calculate breakout moves from the zone
+            up_move = max(future_highs) - zone_high
+            down_move = zone_low - min(future_lows)
 
             # CLASSIFY SUPPORT OR RESISTANCE
-            if up_move > self.breakout_threshold:
-                zones.append(Zone(price=zone_price, ztype="support"))
-            elif down_move > self.breakout_threshold:
-                zones.append(Zone(price=zone_price, ztype="resistance"))
+            # Choose the dominant breakout direction
+            if up_move > self.breakout_threshold and up_move > down_move:
+                # Price broke UP from zone → zone acts as SUPPORT
+                zones.append(Zone(price=zone_low, ztype="support"))
+            elif down_move > self.breakout_threshold and down_move > up_move:
+                # Price broke DOWN from zone → zone acts as RESISTANCE
+                zones.append(Zone(price=zone_high, ztype="resistance"))
 
         logging.info(f"Detected {len(zones)} valid SR zones before clustering.")
         return zones
