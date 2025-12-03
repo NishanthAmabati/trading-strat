@@ -33,18 +33,21 @@ class SRDetector:
         window: int = 5,
         compression_threshold: float = 50,
         breakout_threshold: float = 70,
-        cluster_pct: float = 0.002
+        cluster_pct: float = 0.002,
+        lookback_candles: int = 15
     ):
         """
         :param window: number of consecutive candles to detect compression
         :param compression_threshold: max allowed close-range inside window
         :param breakout_threshold: price movement after zone to classify zone
         :param cluster_pct: cluster levels within % distance
+        :param lookback_candles: number of future candles to check for breakout
         """
         self.window = window
         self.compression_threshold = compression_threshold
         self.breakout_threshold = breakout_threshold
         self.cluster_pct = cluster_pct
+        self.lookback_candles = lookback_candles
 
     # ---------------------------------------------------------------
     # 1. Detect compression zones
@@ -56,7 +59,7 @@ class SRDetector:
         lows = [c.low for c in candles]
 
         # prevent index overflow (window + future candles)
-        limit = len(candles) - self.window - 10
+        limit = len(candles) - self.window - self.lookback_candles
 
         for i in range(limit):
             win_closes = closes[i:i+self.window]
@@ -73,8 +76,8 @@ class SRDetector:
             zone_low = min(win_lows)
             zone_high = max(win_highs)
 
-            future_highs = highs[i+self.window : i+self.window+10]
-            future_lows = lows[i+self.window : i+self.window+10]
+            future_highs = highs[i+self.window : i+self.window+self.lookback_candles]
+            future_lows = lows[i+self.window : i+self.window+self.lookback_candles]
 
             # Safety check: ensure future data exists
             if not future_highs or not future_lows:
@@ -127,6 +130,13 @@ class SRDetector:
             raise ValueError("Need at least 240 candles.")
 
         candles = candles[-240:]  # use only last 240
+        
+        # Safety check for empty candles list
+        if not candles:
+            return [], []
+            
+        current_price = candles[-1].close
+        
         zones = self.detect_compression_zones(candles)
 
         support_levels = [z.price for z in zones if z.ztype == "support"]
@@ -135,8 +145,17 @@ class SRDetector:
         clustered_support = self.cluster(support_levels)
         clustered_resistance = self.cluster(resistance_levels)
 
-        # Return TOP 3
-        return clustered_support[:3], clustered_resistance[:3]
+        # Filter: support must be BELOW current price, resistance must be ABOVE
+        valid_support = [s for s in clustered_support if s < current_price]
+        valid_resistance = [r for r in clustered_resistance if r > current_price]
+
+        # Sort support by proximity to current price (closest first, descending order)
+        valid_support = sorted(valid_support, reverse=True)
+        # Sort resistance by proximity to current price (closest first, ascending order)
+        valid_resistance = sorted(valid_resistance)
+
+        # Return TOP 3 closest to current price
+        return valid_support[:3], valid_resistance[:3]
 
 
 # ---------------------------------------------------------------
