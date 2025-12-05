@@ -126,9 +126,6 @@ class SRDetector:
     # 3. Main function → returns Top 2–3 important zones
     # ---------------------------------------------------------------
     def get_sr(self, candles: List[Candle]) -> Tuple[List[float], List[float]]:
-        if len(candles) < 240:
-            raise ValueError("Need at least 240 candles.")
-
         candles = candles[-240:]  # use only last 240
         
         # Safety check for empty candles list
